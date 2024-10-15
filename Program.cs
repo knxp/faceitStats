@@ -15,18 +15,28 @@ class Program
 
 
         // Get the API key
-        string faceitApiKey = configuration["FaceitApi:ApiKey"];
+        string faceitApiKey = configuration["Faceit:ApiKey"];
 
-       
+        // Get gameId
+        string gameId = configuration["Faceit:gameId"];
+
+
+
         // Get player ID from user input
-        string playerId = await GetPlayerID.GetPlayerIDFromUser(faceitApiKey);
+        //string playerId = await GetPlayerID.GetPlayerIDFromUser(faceitApiKey);
+
+        //Get Team ID from user input
+        //string teamId = await GetTeamId.GetTeamIDFromUser();
+        string teamId = "2c53c2b2-518f-4885-83bf-85aa32e90286";
 
         // Query the API for testing
-        //await ApiQueryHandler.QueryFaceitApi(faceitApiKey, playerId);
+        //await ApiQueryHandler.QueryFaceitApi(faceitApiKey);
 
         // Full Stats
         //await FullStatsHandler.GetAverageMatchmakingStats(faceitApiKey, playerId);
 
+        // Team Stats
+        await TeamStatsHandler.GetTeamStats(faceitApiKey, teamId, gameId);
 
         // Pass the API key to MatchStatsHandler
         //await PlayerMatchStatsHandler.GetMostRecentMatchStatistics(faceitApiKey, playerId);

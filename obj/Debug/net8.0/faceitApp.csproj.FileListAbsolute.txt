@@ -25,3 +25,4 @@ C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.pdb
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.genruntimeconfig.cache
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\ref\faceitApp.dll
 C:\Users\keato\github-projects\faceitApp\bin\Debug\net8.0\appsettings.json
+C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.sourcelink.json
