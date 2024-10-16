@@ -2,8 +2,11 @@ using System;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using faceitApp.Dictionaries;
 
-public static class TeamStatsHandler
+namespace faceitApp.Handlers
+{
+    public static class TeamStatsHandler
 {
     public static async Task GetTeamStats(string faceitApiKey, string teamId, string gameId)
     {
@@ -87,4 +90,5 @@ public static class TeamStatsHandler
 
         return "Unknown Team";
     }
+}
 }

@@ -1,4 +1,6 @@
-public static class TeamStatsDictionary
+namespace faceitApp.Dictionaries
+{
+    public static class TeamStatsDictionary
 {
     public static readonly Dictionary<string, MapStats> MapStatsCollection = new Dictionary<string, MapStats>();
 
@@ -16,4 +18,5 @@ public static class TeamStatsDictionary
         public int Wins { get; set; }
         public double WinRate { get; set; }
     }
+}
 }

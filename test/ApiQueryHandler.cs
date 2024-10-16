@@ -4,11 +4,15 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
+namespace faceitApp.Testing
+{
+
+
 public static class ApiQueryHandler
 {
     public static async Task QueryFaceitApi(string faceitApiKey, string gameId = "cs2")
     {
-        string url = $"https://open.faceit.com/data/v4/teams/284754a9-9696-46cb-b43f-81b9108c2a8a/stats/{gameId}";
+        string url = $"https://open.faceit.com/data/v4/players/6b99b73f-2f7c-4e0d-b4a8-c7da09cfb4c2/history?game=cs2&offset=17&limit=1";
 
         using (HttpClient client = new HttpClient())
         {
@@ -22,6 +26,9 @@ public static class ApiQueryHandler
                 // Parse and format the JSON response
                 string jsonResponse = await response.Content.ReadAsStringAsync();
                 JObject apiResponse = JObject.Parse(jsonResponse);
+
+                
+
                 string formattedJson = apiResponse.ToString(Newtonsoft.Json.Formatting.Indented); // Pretty-print JSON
 
                 // Write formatted JSON to a file
@@ -36,4 +43,5 @@ public static class ApiQueryHandler
             }
         }
     }
+}
 }

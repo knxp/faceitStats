@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 
-public static class StatsDictionary
+namespace faceitApp.Dictionaries
+{
+    public static class FullStatsDictionary
 {
     public static readonly Dictionary<string, double> Stats = new Dictionary<string, double>
     {
@@ -105,4 +107,5 @@ public static class StatsDictionary
 
         // Add any other stats you want in the specific order
     };
+}
 }

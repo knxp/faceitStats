@@ -3,11 +3,14 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
+using faceitApp.Dictionaries;
 
-public static class FullStatsHandler
+namespace faceitApp.Handlers
 {
-    // Function to get average stats for CS2 matchmaking games with pagination
-    public static async Task GetAverageMatchmakingStats(string faceitApiKey, string playerId)
+    public static class BasicStatsHandler
+{
+    // Function to get average basic stats for CS2 matchmaking games with pagination
+    public static async Task GetAverageBasicStats(string faceitApiKey, string playerId)
     {
         int offset = 0;  // Start at the first page of results
         int limit = 20; // Maximum number of matches to request per page
@@ -15,7 +18,7 @@ public static class FullStatsHandler
         bool hasMoreMatches = true; // Flag to determine if more matches exist
 
         int matchCount = 0;
-        int matchLimit = 100; // Max matches to process
+        int matchLimit = 500; // Max matches to process
 
         // Reuse the same HttpClient instance for better performance
         using (HttpClient client = new HttpClient())
@@ -83,12 +86,12 @@ public static class FullStatsHandler
                                                         {
                                                             JObject stats = (JObject)player["player_stats"];
 
-                                                            // Accumulate stats using the StatsDictionary
-                                                            foreach (var key in StatsDictionary.Stats.Keys)
+                                                            // Accumulate stats using the BasicStatDictionary
+                                                            foreach (var key in BasicStatDictionary.Stats.Keys)
                                                             {
                                                                 if (stats[key] != null)
                                                                 {
-                                                                    StatsDictionary.Stats[key] += stats[key].Value<double>();
+                                                                    BasicStatDictionary.Stats[key] += stats[key].Value<double>();
                                                                 }
                                                             }
                                                             matchCount++;
@@ -126,10 +129,10 @@ public static class FullStatsHandler
         // Calculate and display averages
         if (matchCount > 0)
         {
-            Console.WriteLine("Average Matchmaking Stats for CS2:");
-            foreach (var key in StatsDictionary.CustomOrder)
+            Console.WriteLine("Average Basic Matchmaking Stats for CS2:");
+            foreach (var key in BasicStatDictionary.CustomOrder)
             {
-                if (StatsDictionary.Stats.TryGetValue(key, out double totalValue))
+                if (BasicStatDictionary.Stats.TryGetValue(key, out double totalValue))
                 {
                     double averageValue = totalValue / matchCount;
                     Console.WriteLine($"{key}: {Math.Round(averageValue, 2)}");
@@ -141,4 +144,5 @@ public static class FullStatsHandler
             Console.WriteLine("No matchmaking matches found.");
         }
     }
+}
 }

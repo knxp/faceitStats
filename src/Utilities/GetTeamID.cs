@@ -3,7 +3,9 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
-public static class GetTeamId
+namespace faceitApp.Utilities
+{
+    public static class GetTeamId
 {
     public static string ExtractTeamId(string teamLink)
     {
@@ -29,4 +31,5 @@ public static class GetTeamId
         string teamLink = Console.ReadLine();
         return ExtractTeamId(teamLink);
     }
+}
 }

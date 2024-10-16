@@ -3,7 +3,9 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
-public class GetPlayerID
+namespace faceitApp.Utilities
+{
+    public class GetPlayerID
 {
     // Function to fetch the player ID based on the provided nickname
     public static async Task<string> FetchPlayerID(string nickname, string faceitApiKey)
@@ -47,4 +49,5 @@ public class GetPlayerID
         string nickname = Console.ReadLine();
         return await FetchPlayerID(nickname, faceitApiKey);
     }
+}
 }
