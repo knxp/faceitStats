@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 using faceitApp.Handlers;
 using faceitApp.Dictionaries;
 using faceitApp.Utilities;
-using faceitApp.Testing;
+
 class Program
 {
     static async Task Main(string[] args)
@@ -26,11 +26,11 @@ class Program
 
         // Query the API for testing
         //await ApiQueryHandler.QueryFaceitApi(faceitApiKey);
-
+        //await ApiQueryHandler.GetDataAsync();
 
 
         // Get player ID from user input
-        string playerId = await GetPlayerID.GetPlayerIDFromUser(faceitApiKey);
+        //string playerId = await GetPlayerID.GetPlayerIDFromUser(faceitApiKey);
 
         //Get Team ID from user input
         //string teamId = await GetTeamId.GetTeamIDFromUser();
@@ -46,11 +46,8 @@ class Program
         //await TeamStatsHandler.GetTeamStats(faceitApiKey, teamId, gameId);
 
         // League Stats
-        await PlayerLeagueStatsHandler.GetLeagueStats(faceitApiKey, playerId);
+        //await PlayerLeagueStatsHandler.GetLeagueStats(faceitApiKey, playerId);
 
-
-        // Pass the API key to MatchStatsHandler
-        //await PlayerMatchStatsHandler.GetMostRecentMatchStatistics(faceitApiKey, playerId);
 
 
     }

@@ -1,94 +1,116 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
+using System.Linq;
+using faceitApp.Models;
+using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
-using faceitApp.Dictionaries;
 
 namespace faceitApp.Handlers
 {
-    public static class TeamStatsHandler
-{
-    public static async Task GetTeamStats(string faceitApiKey, string teamId, string gameId)
+    public class TeamStatsHandler
     {
-        using (HttpClient client = new HttpClient())
+        private readonly HttpClient _httpClient;
+        private readonly string _faceitApiKey;
+
+        public TeamStatsHandler(HttpClient httpClient, IConfiguration configuration)
         {
-            client.DefaultRequestHeaders.Add("Authorization", "Bearer " + faceitApiKey);
-            string teamStatsUrl = $"https://open.faceit.com/data/v4/teams/{teamId}/stats/{gameId}";
+            _httpClient = httpClient;
+            _faceitApiKey = configuration["Faceit:ApiKey"];
+        }
 
-            // Fetching team name
-            string teamName = await GetTeamName(client, teamId);
-            Console.WriteLine($"Team Name: {teamName}");
-
-            // Fetching team stats
-            HttpResponseMessage response = await client.GetAsync(teamStatsUrl);
-            if (response.IsSuccessStatusCode)
+        public async Task<(TeamInfo info, TeamStats stats, List<MapStats> mapStats)> GetTeamStatsAsync(string teamId, string gameId)
+        {
+            try
             {
-                string jsonResponse = await response.Content.ReadAsStringAsync();
-                JObject stats = JObject.Parse(jsonResponse);
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _faceitApiKey);
 
-                // Fetching lifetime stats
-                var lifetime = stats["lifetime"];
-                TeamStatsDictionary.TeamStats lifetimeStats = new TeamStatsDictionary.TeamStats
+                // Get team info
+                var infoResponse = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/teams/{teamId}");
+                infoResponse.EnsureSuccessStatusCode();
+                var infoJson = await infoResponse.Content.ReadAsStringAsync();
+                var infoData = JObject.Parse(infoJson);
+
+                var teamInfo = new TeamInfo
                 {
-                    Matches = lifetime["Matches"]?.Value<int>() ?? 0,
-                    Wins = lifetime["Wins"]?.Value<int>() ?? 0,
-                    WinRate = lifetime["Win Rate %"]?.Value<double>() ?? 0,
-                    WinStreak = lifetime["Current Win Streak"]?.Value<int>() ?? 0
+                    Name = infoData["name"]?.ToString(),
+                    Avatar = infoData["avatar"]?.ToString(),
+                    GameId = gameId,
+                    Members = new List<TeamMember>()
                 };
 
-                // Outputting lifetime stats
-                Console.WriteLine($"Lifetime Stats - Matches: {lifetimeStats.Matches}, Wins: {lifetimeStats.Wins}, Win Rate: {lifetimeStats.WinRate}%, Win Streak: {lifetimeStats.WinStreak}");
+                var members = infoData["members"] as JArray;
+                if (members != null)
+                {
+                    foreach (var member in members)
+                    {
+                        teamInfo.Members.Add(new TeamMember
+                        {
+                            Nickname = member["nickname"]?.ToString(),
+                            PlayerId = member["user_id"]?.ToString(),
+                            Avatar = member["avatar"]?.ToString()
+                        });
+                    }
+                }
 
-                // Fetching segment stats
-                var segments = stats["segments"] as JArray;
+                // Get team stats
+                var statsResponse = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/teams/{teamId}/stats/{gameId}");
+                statsResponse.EnsureSuccessStatusCode();
+                var statsJson = await statsResponse.Content.ReadAsStringAsync();
+                var statsData = JObject.Parse(statsJson);
+
+                var teamStats = new TeamStats
+                {
+                    TotalMatches = int.Parse(statsData["lifetime"]?["Matches"]?.ToString() ?? "0"),
+                    WinCount = int.Parse(statsData["lifetime"]?["Wins"]?.ToString() ?? "0"),
+                    CurrentStreak = int.Parse(statsData["lifetime"]?["Current Win Streak"]?.ToString() ?? "0"),
+                    LongestWinStreak = statsData["lifetime"]?["Longest Win Streak"]?.ToString() ?? "0",
+                    RecentMatches = new List<TeamMatchHistory>()
+                };
+
+                // Get recent results
+                var recentResults = statsData["lifetime"]?["Recent Results"] as JArray;
+                if (recentResults != null)
+                {
+                    foreach (var result in recentResults.Take(5))
+                    {
+                        teamStats.RecentMatches.Add(new TeamMatchHistory
+                        {
+                            MatchId = Guid.NewGuid().ToString(),
+                            TeamId = teamId,
+                            Result = result.ToString() == "1" ? 1 : 0
+                        });
+                    }
+                }
+
+                // Get map stats
+                var mapStats = new List<MapStats>();
+                var segments = statsData["segments"] as JArray;
                 if (segments != null)
                 {
                     foreach (var segment in segments)
                     {
-                        string mapName = segment["label"]?.ToString() ?? "Unknown Map";
-
-                        // Skip the segment for Overpass
-                        if (mapName.Equals("Overpass", StringComparison.OrdinalIgnoreCase))
+                        var mapName = segment["label"]?.ToString();
+                        if (!string.IsNullOrEmpty(mapName) && !mapName.Contains("wingman", StringComparison.OrdinalIgnoreCase))
                         {
-                            continue; // Skip this iteration
+                            mapStats.Add(new MapStats
+                            {
+                                Map = mapName,
+                                TotalMatches = int.Parse(segment["stats"]?["Matches"]?.ToString() ?? "0"),
+                                Wins = int.Parse(segment["stats"]?["Wins"]?.ToString() ?? "0")
+                            });
                         }
-
-                        var segmentStats = segment["stats"];
-                        var mapStats = new TeamStatsDictionary.MapStats
-                        {
-                            Matches = segmentStats["Matches"]?.Value<int>() ?? 0,
-                            Wins = segmentStats["Wins"]?.Value<int>() ?? 0,
-                            WinRate = segmentStats["Win Rate %"]?.Value<double>() ?? 0
-                        };
-
-                        Console.WriteLine($"Map: {mapName}, Matches: {mapStats.Matches}, Wins: {mapStats.Wins}, Win Rate: {mapStats.WinRate}%");
                     }
                 }
-                else
-                {
-                    Console.WriteLine("No segment stats available.");
-                }
+
+                return (teamInfo, teamStats, mapStats);
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine($"Failed to retrieve team stats. Status code: {response.StatusCode}");
+                throw new Exception($"Error fetching team stats: {ex.Message}");
             }
         }
     }
-
-    private static async Task<string> GetTeamName(HttpClient client, string teamId)
-    {
-        string teamInfoUrl = $"https://open.faceit.com/data/v4/teams/{teamId}";
-        HttpResponseMessage response = await client.GetAsync(teamInfoUrl);
-
-        if (response.IsSuccessStatusCode)
-        {
-            string jsonResponse = await response.Content.ReadAsStringAsync();
-            JObject teamData = JObject.Parse(jsonResponse);
-            return teamData["name"]?.ToString() ?? "Unknown Team";
-        }
-
-        return "Unknown Team";
-    }
-}
 }

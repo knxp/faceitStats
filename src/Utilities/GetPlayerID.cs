@@ -1,53 +1,70 @@
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
 
 namespace faceitApp.Utilities
 {
     public class GetPlayerID
-{
-    // Function to fetch the player ID based on the provided nickname
-    public static async Task<string> FetchPlayerID(string nickname, string faceitApiKey)
     {
-        string url = $"https://open.faceit.com/data/v4/players?nickname={nickname}";
+        private readonly HttpClient _httpClient;
+        private readonly string _faceitApiKey;
 
-        using (HttpClient client = new HttpClient())
+        public GetPlayerID(HttpClient httpClient, IConfiguration configuration)
         {
-            client.DefaultRequestHeaders.Add("Authorization", "Bearer " + faceitApiKey);
+            _httpClient = httpClient;
+            _faceitApiKey = configuration["Faceit:ApiKey"];
+        }
 
-            HttpResponseMessage response = await client.GetAsync(url);
-            if (response.IsSuccessStatusCode)
+        public async Task<string> GetPlayerIDFromNicknameAsync(string nickname)
+        {
+            try
             {
-                string jsonResponse = await response.Content.ReadAsStringAsync();
-                JObject playerData = JObject.Parse(jsonResponse);
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _faceitApiKey);
 
-                // Check if player data is returned
-                if (playerData["player_id"] != null)
+                // First try exact match
+                var response = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/players?nickname={Uri.EscapeDataString(nickname)}");
+
+                if (response.IsSuccessStatusCode)
                 {
-                    string playerId = playerData["player_id"].ToString();
-                    return playerId;
+                    var content = await response.Content.ReadAsStringAsync();
+                    var json = JObject.Parse(content);
+                    return json["player_id"]?.ToString();
                 }
-                else
+
+                // If exact match fails, try case-insensitive search
+                response = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/search/players?nickname={Uri.EscapeDataString(nickname)}&offset=0&limit=1");
+
+                if (response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("Player not found.");
-                    return null;
+                    var content = await response.Content.ReadAsStringAsync();
+                    var json = JObject.Parse(content);
+                    var items = json["items"] as JArray;
+
+                    if (items != null && items.Count > 0)
+                    {
+                        var foundNickname = items[0]["nickname"]?.ToString();
+                        var playerId = items[0]["player_id"]?.ToString();
+
+                        // If the found nickname matches case-insensitively but not exactly,
+                        // we'll still use it but inform the user
+                        if (!string.Equals(nickname, foundNickname, StringComparison.Ordinal) &&
+                            string.Equals(nickname, foundNickname, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return playerId;
+                        }
+                        return playerId;
+                    }
                 }
+
+                return "Player not found";
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine($"Error fetching player ID: {response.StatusCode}");
-                return null;
+                return $"Error: {ex.Message}";
             }
         }
     }
-
-    // Method to prompt user for nickname and return player ID
-    public static async Task<string> GetPlayerIDFromUser(string faceitApiKey)
-    {
-        Console.Write("Enter the Faceit player's nickname: ");
-        string nickname = Console.ReadLine();
-        return await FetchPlayerID(nickname, faceitApiKey);
-    }
-}
 }

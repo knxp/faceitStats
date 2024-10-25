@@ -1,35 +1,82 @@
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
+using System.Linq;
 
 namespace faceitApp.Utilities
 {
-    public static class GetTeamId
-{
-    public static string ExtractTeamId(string teamLink)
+    public class GetTeamID
     {
-        // Check if the link is valid and contains the team ID
-        if (Uri.TryCreate(teamLink, UriKind.Absolute, out Uri uriResult))
-        {
-            // Split the path segments and check for the team ID
-            string[] segments = uriResult.Segments;
+        private readonly HttpClient _httpClient;
+        private readonly string _faceitApiKey;
 
-            if (segments.Length > 3 && segments[2].Equals("teams/", StringComparison.OrdinalIgnoreCase))
-            {
-                // The team ID is the next segment
-                return segments[3].TrimEnd('/');
-            }
+        public GetTeamID(HttpClient httpClient, IConfiguration configuration)
+        {
+            _httpClient = httpClient;
+            _faceitApiKey = configuration["Faceit:ApiKey"];
         }
 
-        throw new ArgumentException("Invalid team link format. Please provide a valid Faceit team link.");
-    }
+        public async Task<string> GetTeamIDFromUrlAsync(string input)
+        {
+            try
+            {
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _faceitApiKey);
 
-    public static async Task<string> GetTeamIDFromUser()
-    {
-        Console.Write("Enter the Faceit team link: ");
-        string teamLink = Console.ReadLine();
-        return ExtractTeamId(teamLink);
+                // Check if input is a URL
+                if (input.Contains("faceit.com/") || input.Contains("/teams/"))
+                {
+                    // Extract team name from URL
+                    var segments = input.Split(new[] { "/teams/", "/team/" }, StringSplitOptions.None);
+                    if (segments.Length > 1)
+                    {
+                        var teamId = segments[1].Split('/')[0];
+                        var teamResponse = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/teams/{teamId}");
+
+                        if (teamResponse.IsSuccessStatusCode)
+                        {
+                            var content = await teamResponse.Content.ReadAsStringAsync();
+                            var json = JObject.Parse(content);
+                            var games = json["games"] as JArray;
+
+                            if (games != null && games.Any(g => g["name"]?.ToString().Equals("cs2", StringComparison.OrdinalIgnoreCase) == true))
+                            {
+                                return json["team_id"]?.ToString();
+                            }
+                        }
+                    }
+                }
+
+                // If not a URL or URL lookup failed, search by name
+                var searchResponse = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/search/teams?nickname={Uri.EscapeDataString(input)}&game=cs2&offset=0&limit=50");
+
+                if (searchResponse.IsSuccessStatusCode)
+                {
+                    var content = await searchResponse.Content.ReadAsStringAsync();
+                    var json = JObject.Parse(content);
+                    var items = json["items"] as JArray;
+
+                    if (items != null && items.Count > 0)
+                    {
+                        // Find exact name match
+                        var exactMatch = items.FirstOrDefault(item =>
+                            string.Equals(item["name"]?.ToString(), input, StringComparison.Ordinal));
+
+                        if (exactMatch != null)
+                        {
+                            return exactMatch["team_id"]?.ToString();
+                        }
+                    }
+                }
+
+                return "Failed: Team not found. Please check the exact team name (case sensitive) or URL and ensure it plays CS2";
+            }
+            catch (Exception ex)
+            {
+                return $"Failed: {ex.Message}";
+            }
+        }
     }
-}
 }

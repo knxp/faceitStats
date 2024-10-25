@@ -1,148 +1,144 @@
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
 using faceitApp.Dictionaries;
+using faceitApp.Models;
+using System.Linq;
 
 namespace faceitApp.Handlers
 {
-    public static class BasicStatsHandler
-{
-    // Function to get average basic stats for CS2 matchmaking games with pagination
-    public static async Task GetAverageBasicStats(string faceitApiKey, string playerId)
+    public class BasicStatsHandler
     {
-        int offset = 0;  // Start at the first page of results
-        int limit = 20; // Maximum number of matches to request per page
-        int totalMatchesPulled = 0; // Keep track of the total number of matches pulled
-        bool hasMoreMatches = true; // Flag to determine if more matches exist
+        private readonly HttpClient _httpClient;
+        private readonly string _faceitApiKey;
 
-        int matchCount = 0;
-        int matchLimit = 500; // Max matches to process
-
-        // Reuse the same HttpClient instance for better performance
-        using (HttpClient client = new HttpClient())
+        public BasicStatsHandler(HttpClient httpClient, IConfiguration configuration)
         {
-            client.DefaultRequestHeaders.Add("Authorization", "Bearer " + faceitApiKey);
+            _httpClient = httpClient;
+            _faceitApiKey = configuration["Faceit:ApiKey"];
+        }
 
-            while (hasMoreMatches && matchCount < matchLimit) // Continue until we get at most 100 matches
+        public async Task<Player> GetAverageBasicStatsAsync(string playerId, int matchLimit = 100)
+        {
+            var player = new Player { Id = playerId };
+            var stats = new Dictionary<string, double>();
+            var matchTasks = new List<Task<Dictionary<string, double>>>();
+
+            foreach (var key in BasicStatDictionary.Stats.Keys)
             {
-                string matchHistoryUrl = $"https://open.faceit.com/data/v4/players/{playerId}/history?game=cs2&offset={offset}&limit={limit}";
+                stats[key] = 0;
+            }
 
-                // Get the player's match history for the current page
-                HttpResponseMessage response = await client.GetAsync(matchHistoryUrl);
-                if (response.IsSuccessStatusCode)
+            try
+            {
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _faceitApiKey);
+
+                // Get match history
+                var matchHistoryUrl = $"https://open.faceit.com/data/v4/players/{playerId}/history?game=cs2&offset=0&limit=100";
+                var response = await _httpClient.GetAsync(matchHistoryUrl);
+                response.EnsureSuccessStatusCode();
+
+                var matchHistory = JObject.Parse(await response.Content.ReadAsStringAsync());
+                var matches = matchHistory["items"] as JArray;
+
+                if (matches != null)
                 {
-                    string jsonResponse = await response.Content.ReadAsStringAsync();
-                    JObject matchHistory = JObject.Parse(jsonResponse);
-                    JArray matches = (JArray)matchHistory["items"];
+                    // Filter matchmaking matches and create tasks
+                    var matchmakingMatches = matches
+                        .Where(m => m["competition_type"]?.ToString() == "matchmaking")
+                        .Take(matchLimit)
+                        .ToList();
 
-                    // If no more matches are found, stop the loop
-                    if (matches.Count == 0)
+                    // Create tasks for parallel processing
+                    foreach (var match in matchmakingMatches)
                     {
-                        hasMoreMatches = false;
-                        break;
+                        var matchId = match["match_id"].ToString();
+                        matchTasks.Add(ProcessMatchAsync(matchId, playerId));
                     }
 
-                    // Update the total matches pulled so far
-                    totalMatchesPulled += matches.Count;
-                    Console.WriteLine($"Pulled {totalMatchesPulled} matches so far...");
+                    // Wait for all match processing tasks to complete
+                    var results = await Task.WhenAll(matchTasks);
 
-                    // Create a list of tasks to fetch match stats in parallel
-                    List<Task> matchTasks = new List<Task>();
-
-                    foreach (var match in matches)
+                    // Aggregate results
+                    foreach (var matchStats in results.Where(r => r != null))
                     {
-                        if (match["competition_type"] != null && match["competition_type"].ToString() == "matchmaking")
+                        foreach (var stat in matchStats)
                         {
-                            string matchId = match["match_id"].ToString();
-                            string matchUrl = $"https://open.faceit.com/data/v4/matches/{matchId}/stats";
-
-                            // Add match stats fetching task to the list
-                            matchTasks.Add(Task.Run(async () =>
-                            {
-                                HttpResponseMessage matchResponse = await client.GetAsync(matchUrl);
-                                if (matchResponse.IsSuccessStatusCode)
-                                {
-                                    string matchStats = await matchResponse.Content.ReadAsStringAsync();
-                                    JObject matchStatsJson = JObject.Parse(matchStats);
-
-                                    // Ensure "rounds" object exists and has content
-                                    if (matchStatsJson["rounds"] != null && matchStatsJson["rounds"].HasValues)
-                                    {
-                                        foreach (var round in matchStatsJson["rounds"])
-                                        {
-                                            foreach (var team in round["teams"])
-                                            {
-                                                foreach (var player in team["players"])
-                                                {
-                                                    string currentPlayerId = player["player_id"].ToString();
-
-                                                    // Check if the current player matches the playerId
-                                                    if (currentPlayerId == playerId)
-                                                    {
-                                                        // Ensure the "stats" object exists
-                                                        if (player["player_stats"] != null)
-                                                        {
-                                                            JObject stats = (JObject)player["player_stats"];
-
-                                                            // Accumulate stats using the BasicStatDictionary
-                                                            foreach (var key in BasicStatDictionary.Stats.Keys)
-                                                            {
-                                                                if (stats[key] != null)
-                                                                {
-                                                                    BasicStatDictionary.Stats[key] += stats[key].Value<double>();
-                                                                }
-                                                            }
-                                                            matchCount++;
-
-                                                            // Stop if we've processed 100 matches
-                                                            if (matchCount >= matchLimit)
-                                                            {
-                                                                return;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }));
+                            stats[stat.Key] += stat.Value;
                         }
                     }
 
-                    // Wait for all match stats to be fetched before proceeding to the next batch
-                    await Task.WhenAll(matchTasks);
+                    int matchCount = results.Count(r => r != null);
+                    if (matchCount > 0)
+                    {
+                        player.Kills = Math.Round(stats["Kills"] / matchCount, 2);
+                        player.Assists = Math.Round(stats["Assists"] / matchCount, 2);
+                        player.Deaths = Math.Round(stats["Deaths"] / matchCount, 2);
+                        player.KDRatio = Math.Round(stats["K/D Ratio"] / matchCount, 2);
+                        player.KRRRatio = Math.Round(stats["K/R Ratio"] / matchCount, 2);
+                        player.Headshots = Math.Round(stats["Headshots"] / matchCount, 2);
+                        player.HeadshotsPercentage = Math.Round(stats["Headshots %"] / matchCount, 2);
+                        player.TripleKills = Math.Round(stats["Triple Kills"] / matchCount, 2);
+                        player.QuadroKills = Math.Round(stats["Quadro Kills"] / matchCount, 2);
+                        player.PentaKills = Math.Round(stats["Penta Kills"] / matchCount, 2);
+                        player.MVPs = Math.Round(stats["MVPs"] / matchCount, 2);
+                    }
+                }
 
-                    // Increase the offset to get the next page of results
-                    offset += limit;
-                }
-                else
-                {
-                    Console.WriteLine($"Failed to retrieve match history. Status code: {response.StatusCode}");
-                    break;
-                }
+                return player;
             }
-        }
-
-        // Calculate and display averages
-        if (matchCount > 0)
-        {
-            Console.WriteLine("Average Basic Matchmaking Stats for CS2:");
-            foreach (var key in BasicStatDictionary.CustomOrder)
+            catch (Exception ex)
             {
-                if (BasicStatDictionary.Stats.TryGetValue(key, out double totalValue))
-                {
-                    double averageValue = totalValue / matchCount;
-                    Console.WriteLine($"{key}: {Math.Round(averageValue, 2)}");
-                }
+                throw new Exception($"Error fetching player stats: {ex.Message}");
             }
         }
-        else
+
+        private async Task<Dictionary<string, double>> ProcessMatchAsync(string matchId, string playerId)
         {
-            Console.WriteLine("No matchmaking matches found.");
+            try
+            {
+                var matchStatsUrl = $"https://open.faceit.com/data/v4/matches/{matchId}/stats";
+                var matchResponse = await _httpClient.GetAsync(matchStatsUrl);
+
+                if (!matchResponse.IsSuccessStatusCode)
+                    return null;
+
+                var matchStats = JObject.Parse(await matchResponse.Content.ReadAsStringAsync());
+                var rounds = matchStats["rounds"] as JArray;
+
+                if (rounds == null || !rounds.Any())
+                    return null;
+
+                var playerStats = rounds[0]["teams"]
+                    .SelectMany(t => t["players"])
+                    .FirstOrDefault(p => p["player_id"]?.ToString() == playerId)?["player_stats"] as JObject;
+
+                if (playerStats == null)
+                    return null;
+
+                var matchStatValues = new Dictionary<string, double>();
+                foreach (var key in BasicStatDictionary.Stats.Keys)
+                {
+                    if (playerStats[key] != null)
+                    {
+                        matchStatValues[key] = playerStats[key].Value<double>();
+                    }
+                    else
+                    {
+                        matchStatValues[key] = 0;
+                    }
+                }
+
+                return matchStatValues;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
-}
 }

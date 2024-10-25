@@ -1,3 +1,4 @@
+C:\Users\keato\github-projects\faceitApp\bin\Debug\net8.0\appsettings.json
 C:\Users\keato\github-projects\faceitApp\bin\Debug\net8.0\faceitApp.exe
 C:\Users\keato\github-projects\faceitApp\bin\Debug\net8.0\faceitApp.deps.json
 C:\Users\keato\github-projects\faceitApp\bin\Debug\net8.0\faceitApp.runtimeconfig.json
@@ -18,11 +19,10 @@ C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.GeneratedMSB
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.AssemblyInfoInputs.cache
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.AssemblyInfo.cs
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.csproj.CoreCompileInputs.cache
+C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.sourcelink.json
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.csproj.Up2Date
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.dll
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\refint\faceitApp.dll
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.pdb
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.genruntimeconfig.cache
 C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\ref\faceitApp.dll
-C:\Users\keato\github-projects\faceitApp\bin\Debug\net8.0\appsettings.json
-C:\Users\keato\github-projects\faceitApp\obj\Debug\net8.0\faceitApp.sourcelink.json
