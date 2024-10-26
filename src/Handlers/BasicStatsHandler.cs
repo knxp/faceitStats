@@ -14,6 +14,7 @@ namespace faceitApp.Handlers
     {
         private readonly HttpClient _httpClient;
         private readonly string _faceitApiKey;
+        private const int MaxMatchLimit = 300;
 
         public BasicStatsHandler(HttpClient httpClient, IConfiguration configuration)
         {
@@ -23,6 +24,9 @@ namespace faceitApp.Handlers
 
         public async Task<Player> GetAverageBasicStatsAsync(string playerId, int matchLimit = 100)
         {
+            // Ensure matchLimit is within bounds
+            matchLimit = Math.Min(Math.Max(1, matchLimit), MaxMatchLimit);
+
             var player = new Player { Id = playerId };
             var stats = new Dictionary<string, double>();
             var matchTasks = new List<Task<Dictionary<string, double>>>();
@@ -37,18 +41,31 @@ namespace faceitApp.Handlers
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _faceitApiKey);
 
-                // Get match history
-                var matchHistoryUrl = $"https://open.faceit.com/data/v4/players/{playerId}/history?game=cs2&offset=0&limit=100";
-                var response = await _httpClient.GetAsync(matchHistoryUrl);
-                response.EnsureSuccessStatusCode();
+                // Calculate required API calls based on match limit
+                int requiredCalls = (int)Math.Ceiling(matchLimit / 100.0);
+                var allMatches = new List<JToken>();
 
-                var matchHistory = JObject.Parse(await response.Content.ReadAsStringAsync());
-                var matches = matchHistory["items"] as JArray;
-
-                if (matches != null)
+                // Fetch matches in batches of 100
+                for (int i = 0; i < requiredCalls; i++)
                 {
-                    // Filter matchmaking matches and create tasks
-                    var matchmakingMatches = matches
+                    var offset = i * 100;
+                    var matchHistoryUrl = $"https://open.faceit.com/data/v4/players/{playerId}/history?game=cs2&offset={offset}&limit=100";
+                    var response = await _httpClient.GetAsync(matchHistoryUrl);
+                    response.EnsureSuccessStatusCode();
+
+                    var matchHistory = JObject.Parse(await response.Content.ReadAsStringAsync());
+                    var matches = matchHistory["items"] as JArray;
+
+                    if (matches == null || !matches.Any())
+                        break;
+
+                    allMatches.AddRange(matches);
+                }
+
+                if (allMatches.Any())
+                {
+                    // Filter matchmaking matches and take requested number
+                    var matchmakingMatches = allMatches
                         .Where(m => m["competition_type"]?.ToString() == "matchmaking")
                         .Take(matchLimit)
                         .ToList();

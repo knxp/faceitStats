@@ -1,9 +1,10 @@
+using System;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
-using Newtonsoft.Json; // Ensure you have this using directive
-using faceitApp.Models; // Ensure you have this namespace for the Player model
+using faceitApp.Models;
+using System.Collections.Generic;
 
 namespace faceitApp.Utilities
 {
@@ -20,41 +21,60 @@ namespace faceitApp.Utilities
 
         public async Task<Player> GetPlayerInfoAsync(string playerId)
         {
-            string url = $"https://open.faceit.com/data/v4/players/{playerId}";
-            _httpClient.DefaultRequestHeaders.Clear();
-            _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _faceitApiKey);
-            _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
-
             try
             {
-                HttpResponseMessage response = await _httpClient.GetAsync(url);
-                if (response.IsSuccessStatusCode)
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _faceitApiKey);
+
+                var response = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/players/{playerId}");
+                response.EnsureSuccessStatusCode();
+
+                var content = await response.Content.ReadAsStringAsync();
+                var json = JObject.Parse(content);
+
+                var player = new Player
                 {
-                    string jsonResponse = await response.Content.ReadAsStringAsync();
-                    JObject playerData = JObject.Parse(jsonResponse);
-                    var cs2Stats = playerData["games"]["cs2"];
+                    Id = playerId,
+                    Nickname = json["nickname"]?.ToString(),
+                    Avatar = json["avatar"]?.ToString(),
+                    Teams = new List<TeamInfo>()
+                };
 
-                    return new Player
-                    {
-                        Nickname = playerData["nickname"]?.ToString(), // Use null-conditional operator
-                        Avatar = playerData["avatar"]?.ToString(),
-                        Elo = cs2Stats != null ? (int?)cs2Stats["faceit_elo"]?.ToObject<int>() : null, // Handle possible nulls,
-                        Level = cs2Stats != null ? (int?)cs2Stats["skill_level"]?.ToObject<int>() : null // Handle possible nulls
-                    };
+                // Get CS2 game info
+                var games = json["games"]?["cs2"];
+                if (games != null)
+                {
+                    player.Level = games["skill_level"]?.Value<int>();
+                    player.Elo = games["faceit_elo"]?.Value<int>();
                 }
-            }
-            catch (HttpRequestException ex)
-            {
-                // Handle HTTP request errors here
-                throw new Exception($"Error retrieving player info: {ex.Message}");
-            }
-            catch (JsonException ex)
-            {
-                // Handle JSON parsing errors here
-                throw new Exception($"Error parsing player data: {ex.Message}");
-            }
 
-            return null;
+                // Get teams
+                var teamsResponse = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/players/{playerId}/teams");
+                if (teamsResponse.IsSuccessStatusCode)
+                {
+                    var teamsContent = await teamsResponse.Content.ReadAsStringAsync();
+                    var teamsJson = JObject.Parse(teamsContent);
+                    var teams = teamsJson["items"] as JArray;
+
+                    if (teams != null)
+                    {
+                        foreach (var team in teams)
+                        {
+                            player.Teams.Add(new TeamInfo
+                            {
+                                Name = team["name"]?.ToString(),
+                                Avatar = team["avatar"]?.ToString()
+                            });
+                        }
+                    }
+                }
+
+                return player;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Error fetching player info: {ex.Message}");
+            }
         }
     }
 }

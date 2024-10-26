@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("faceitApp")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+75f17cfe28d37ead9c8f7408c92b165d30d7520d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+306d905d73af284bdca909aad2e9f193b65657d3")]
 [assembly: System.Reflection.AssemblyProductAttribute("faceitApp")]
 [assembly: System.Reflection.AssemblyTitleAttribute("faceitApp")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
