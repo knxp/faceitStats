@@ -6,14 +6,15 @@ namespace faceitApp.Models
     {
         public string Name { get; set; }
         public string Avatar { get; set; }
-        public List<TeamMember> Members { get; set; }
+        public List<TeamPlayer> Players { get; set; } = new List<TeamPlayer>();
         public string GameId { get; set; }
     }
 
-    public class TeamMember
+    public class TeamPlayer
     {
         public string Nickname { get; set; }
         public string PlayerId { get; set; }
         public string Avatar { get; set; }
+        public int? Elo { get; set; }
     }
 }

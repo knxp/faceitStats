@@ -27,8 +27,15 @@ namespace faceitApp.Handlers
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + _faceitApiKey);
 
-                // Get team info
-                var infoResponse = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/teams/{teamId}");
+                // Create tasks for parallel execution
+                var infoTask = _httpClient.GetAsync($"https://open.faceit.com/data/v4/teams/{teamId}");
+                var statsTask = _httpClient.GetAsync($"https://open.faceit.com/data/v4/teams/{teamId}/stats/{gameId}");
+
+                // Wait for both requests to complete
+                await Task.WhenAll(infoTask, statsTask);
+
+                // Process team info
+                var infoResponse = await infoTask;
                 infoResponse.EnsureSuccessStatusCode();
                 var infoJson = await infoResponse.Content.ReadAsStringAsync();
                 var infoData = JObject.Parse(infoJson);
@@ -38,29 +45,79 @@ namespace faceitApp.Handlers
                     Name = infoData["name"]?.ToString(),
                     Avatar = infoData["avatar"]?.ToString(),
                     GameId = gameId,
-                    Members = new List<TeamMember>()
+                    Players = new List<TeamPlayer>()
                 };
 
-                var members = infoData["members"] as JArray;
-                if (members != null)
-                {
-                    foreach (var member in members)
-                    {
-                        teamInfo.Members.Add(new TeamMember
-                        {
-                            Nickname = member["nickname"]?.ToString(),
-                            PlayerId = member["user_id"]?.ToString(),
-                            Avatar = member["avatar"]?.ToString()
-                        });
-                    }
-                }
-
-                // Get team stats
-                var statsResponse = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/teams/{teamId}/stats/{gameId}");
+                // Process team stats in parallel
+                var statsResponse = await statsTask;
                 statsResponse.EnsureSuccessStatusCode();
                 var statsJson = await statsResponse.Content.ReadAsStringAsync();
                 var statsData = JObject.Parse(statsJson);
 
+                // Create player data tasks
+                var members = infoData["members"] as JArray;
+                var playerTasks = new List<Task>();
+                var playerDataLock = new object();
+
+                if (members != null)
+                {
+                    foreach (var member in members)
+                    {
+                        var playerId = member["user_id"]?.ToString();
+                        var nickname = member["nickname"]?.ToString();
+                        var avatar = member["avatar"]?.ToString();
+
+                        var playerTask = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var playerResponse = await _httpClient.GetAsync($"https://open.faceit.com/data/v4/players/{playerId}");
+                                if (playerResponse.IsSuccessStatusCode)
+                                {
+                                    var playerJson = await playerResponse.Content.ReadAsStringAsync();
+                                    var playerData = JObject.Parse(playerJson);
+                                    var games = playerData["games"] as JObject;
+                                    var cs2Data = games?["cs2"] as JObject;
+                                    var elo = cs2Data?["faceit_elo"]?.Value<int>() ?? 0;
+
+                                    var player = new TeamPlayer
+                                    {
+                                        Nickname = nickname,
+                                        PlayerId = playerId,
+                                        Avatar = avatar,
+                                        Elo = elo
+                                    };
+
+                                    lock (playerDataLock)
+                                    {
+                                        teamInfo.Players.Add(player);
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // If player data fetch fails, add player with default elo
+                                lock (playerDataLock)
+                                {
+                                    teamInfo.Players.Add(new TeamPlayer
+                                    {
+                                        Nickname = nickname,
+                                        PlayerId = playerId,
+                                        Avatar = avatar,
+                                        Elo = 0
+                                    });
+                                }
+                            }
+                        });
+
+                        playerTasks.Add(playerTask);
+                    }
+
+                    // Wait for all player data to be processed with a timeout
+                    await Task.WhenAll(playerTasks).WaitAsync(TimeSpan.FromSeconds(10));
+                }
+
+                // Process team stats
                 var teamStats = new TeamStats
                 {
                     TotalMatches = int.Parse(statsData["lifetime"]?["Matches"]?.ToString() ?? "0"),
@@ -70,39 +127,40 @@ namespace faceitApp.Handlers
                     RecentMatches = new List<TeamMatchHistory>()
                 };
 
-                // Get recent results
+                // Process recent results
                 var recentResults = statsData["lifetime"]?["Recent Results"] as JArray;
                 if (recentResults != null)
                 {
-                    foreach (var result in recentResults.Take(5))
-                    {
-                        teamStats.RecentMatches.Add(new TeamMatchHistory
+                    teamStats.RecentMatches.AddRange(
+                        recentResults.Take(5).Select(result => new TeamMatchHistory
                         {
                             MatchId = Guid.NewGuid().ToString(),
                             TeamId = teamId,
                             Result = result.ToString() == "1" ? 1 : 0
-                        });
-                    }
+                        })
+                    );
                 }
 
-                // Get map stats
+                // Process map stats
                 var mapStats = new List<MapStats>();
                 var segments = statsData["segments"] as JArray;
                 if (segments != null)
                 {
-                    foreach (var segment in segments)
-                    {
-                        var mapName = segment["label"]?.ToString();
-                        if (!string.IsNullOrEmpty(mapName) && !mapName.Contains("wingman", StringComparison.OrdinalIgnoreCase))
-                        {
-                            mapStats.Add(new MapStats
+                    mapStats.AddRange(
+                        segments
+                            .Where(segment =>
                             {
-                                Map = mapName,
+                                var mapName = segment["label"]?.ToString();
+                                return !string.IsNullOrEmpty(mapName) &&
+                                       !mapName.Contains("wingman", StringComparison.OrdinalIgnoreCase);
+                            })
+                            .Select(segment => new MapStats
+                            {
+                                Map = segment["label"].ToString(),
                                 TotalMatches = int.Parse(segment["stats"]?["Matches"]?.ToString() ?? "0"),
                                 Wins = int.Parse(segment["stats"]?["Wins"]?.ToString() ?? "0")
-                            });
-                        }
-                    }
+                            })
+                    );
                 }
 
                 return (teamInfo, teamStats, mapStats);
